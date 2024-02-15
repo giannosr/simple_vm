@@ -49,99 +49,96 @@ void loader_copy_args(const int nargs, const int op) {
 int main(const int argc, const char* const argv[]) {
     if (argc != 2) error("[Usage Error] Usage: ./vm byte-code.b");
 
+    instruction *pc = &byte_code[0];
+    stack_entry *sp = &stack[STACK_SIZE]; /* grows down */
+    #define NEXT_INSTRUCTION goto *pc->label
+
+    --pc; /* so that after first load it starts at pc = 0 */
+    const clock_t start = clock();
+
     reload_label: /* dynamic code reloading */
+        ++pc;
         FILE *fp = fopen(argv[1], "r");
         if (fp == NULL) error("[File Error] Couldn't open file");
 
         const int n = fread(buffer, 1, MAX_BYTECODE, fp);
+        if (!feof(fp)) 
+            fputs("[Warning] Program too long (was truncated)", stderr);
         fclose(fp);
-        if (n > MAX_BYTECODE) error("[Size Error] Program too long\n");
 
-        /* loader pass (can't put in seperate function because of labels) */
-        int i;
-        for (i = 0; i < n; ++i)
-            switch (buffer[i]) {
-                case HALT: byte_code[i].label = &&halt_label; break;
-                case JUMP:
-                    byte_code[i].label = &&jump_label;
-                    *(byte_code[i].args) = const2(&buffer[i + 1]);
-                    break;
-                case JNZ:
-                    byte_code[i].label = &&jnz_label;
-                    *(byte_code[i].args) = const2(&buffer[i + 1]);
-                    break;
-                case DUP:
-                    byte_code[i].label = &&dup_label;
-                    byte_code[i].args[0] = buffer[i + 1];
-                    break;
-                case SWAP: /* combining instructions */
-                    if (buffer[i + 2] == SWAP && buffer[i + 1] == buffer[i + 3])
-                        byte_code[i].label = &&double_swap_label;
-                    else {
-                        byte_code[i].label = &&swap_label;
-                        byte_code[i].args[0] = buffer[i + 1];
-                    }
-                    break;
-                case DROP:   byte_code[i].label = &&drop_label;   break;
-                case PUSH4:
-                    byte_code[i].label = &&push4_label;
-                    *(byte_code[i].args) = const4(&buffer[i + 1]);
-                    break;
-                case PUSH2:
-                    byte_code[i].label = &&push2_label;
-                    *(byte_code[i].args) = const2(&buffer[i + 1]);
-                    break;
-                case PUSH1:
-                    byte_code[i].label = &&push1_label;
-                    byte_code[i].args[0] = buffer[i + 1];
-                    break;
-                case ADD:    byte_code[i].label = &&add_label;    break;
-                case SUB:    byte_code[i].label = &&sub_label;    break;
-                case MUL:    byte_code[i].label = &&mul_label;    break;
-                case DIV:    byte_code[i].label = &&div_label;    break;
-                case MOD:    byte_code[i].label = &&mod_label;    break;
-                case EQ:     byte_code[i].label = &&eq_label;     break;
-                case NE:     byte_code[i].label = &&ne_label;     break;
-                case LT:     byte_code[i].label = &&lt_label;     break;
-                case GT:     byte_code[i].label = &&gt_label;     break;
-                case LE:     byte_code[i].label = &&le_label;     break;
-                case GE:     byte_code[i].label = &&ge_label;     break;
-                case NOT:    byte_code[i].label = &&not_label;    break;
-                case AND:    byte_code[i].label = &&and_label;    break;
-                case OR:     byte_code[i].label = &&or_label;     break;
-                case INPUT:  byte_code[i].label = &&input_label;  break;
-                case OUTPUT: byte_code[i].label = &&output_label; break;
-                case CLOCK:  byte_code[i].label = &&clock_label;  break;
-                case CONS: switch (buffer[i + 1]) { /* combining instructions */
-                    case HD: byte_code[i].label = &&cons_hd_label; break;
-                    case TL: byte_code[i].label = &&cons_tl_label; break;
-                    default: byte_code[i].label = &&cons_label;    break;
-                } break;
-                case HD:     byte_code[i].label = &&hd_label;     break;
-                case TL:     byte_code[i].label = &&tl_label;     break;
-                case RELOAD: byte_code[i].label = &&reload_label; break; 
-
-                default:
-                    byte_code[i].label = &&invalid_label;
-                    *(byte_code[i].args) = i;
-            }
-        byte_code[i].label = &&halt_label;
+        if (n == 0) fputs("[Warning] 0 bytes read from byte-code", stderr);
+        byte_code[n].label = &&halt_label;
         /* program ends after last instruction
          * (should have declared byte_code[MAX_BYTECODE + 1] but whatever)
          */
 
-
-        /* begin interpreting */
-        stack_entry *sp = &stack[STACK_SIZE]; /* grows down */
-        instruction *pc = &byte_code[0];
-        #define NEXT_INSTRUCTION goto *pc->label
-        gc_reset();
-
-        unsigned arg, sp_index;
-        stack_entry tmp;
-
-        clock_t start, now;
-        start = clock();
+        /* loader pass (can't put in seperate function because of labels) */
+        int i;
+        for (i = n - 1; i >= 0; --i) switch (buffer[i]) {
+            case HALT: byte_code[i].label = &&halt_label; break;
+            case JUMP:
+                byte_code[i].label = &&jump_label;
+                *(byte_code[i].args) = const2(&buffer[i + 1]);
+                break;
+            case JNZ:
+                byte_code[i].label = &&jnz_label;
+                *(byte_code[i].args) = const2(&buffer[i + 1]);
+                break;
+            case DUP:
+                byte_code[i].label = &&dup_label;
+                byte_code[i].args[0] = buffer[i + 1];
+                break;
+            case SWAP: /* combining instructions */
+                if (buffer[i + 2] == SWAP && buffer[i + 1] == buffer[i + 3])
+                    byte_code[i].label = &&double_swap_label;
+                else {
+                    byte_code[i].label = &&swap_label;
+                    byte_code[i].args[0] = buffer[i + 1];
+                }
+                break;
+            case DROP: byte_code[i].label = &&drop_label; break;
+            case PUSH4:
+                byte_code[i].label = &&push4_label;
+                *(byte_code[i].args) = const4(&buffer[i + 1]);
+                break;
+            case PUSH2:
+                byte_code[i].label = &&push2_label;
+                *(byte_code[i].args) = const2(&buffer[i + 1]);
+                break;
+            case PUSH1:
+                byte_code[i].label = &&push1_label;
+                byte_code[i].args[0] = buffer[i + 1];
+                break;
+            case ADD:    byte_code[i].label = &&add_label;    break;
+            case SUB:    byte_code[i].label = &&sub_label;    break;
+            case MUL:    byte_code[i].label = &&mul_label;    break;
+            case DIV:    byte_code[i].label = &&div_label;    break;
+            case MOD:    byte_code[i].label = &&mod_label;    break;
+            case EQ:     byte_code[i].label = &&eq_label;     break;
+            case NE:     byte_code[i].label = &&ne_label;     break;
+            case LT:     byte_code[i].label = &&lt_label;     break;
+            case GT:     byte_code[i].label = &&gt_label;     break;
+            case LE:     byte_code[i].label = &&le_label;     break;
+            case GE:     byte_code[i].label = &&ge_label;     break;
+            case NOT:    byte_code[i].label = &&not_label;    break;
+            case AND:    byte_code[i].label = &&and_label;    break;
+            case OR:     byte_code[i].label = &&or_label;     break;
+            case INPUT:  byte_code[i].label = &&input_label;  break;
+            case OUTPUT: byte_code[i].label = &&output_label; break;
+            case CLOCK:  byte_code[i].label = &&clock_label;  break;
+            case CONS: switch (buffer[i + 1]) { /* combining instructions */
+                case HD: byte_code[i].label = &&cons_hd_label; break;
+                case TL: byte_code[i].label = &&cons_tl_label; break;
+                default: byte_code[i].label = &&cons_label;    break;
+            } break;
+            case HD:     byte_code[i].label = &&hd_label;     break;
+            case TL:     byte_code[i].label = &&tl_label;     break;
+            case RELOAD: byte_code[i].label = &&reload_label; break;
+            
+            default:
+                byte_code[i].label = &&invalid_label;
+                *(byte_code[i].args) = i;
+        }
         NEXT_INSTRUCTION;
     jump_label:
         pc = &byte_code[*pc->args];
@@ -151,6 +148,7 @@ int main(const int argc, const char* const argv[]) {
         ++sp;
         NEXT_INSTRUCTION;
     dup_label:
+        unsigned arg, sp_index;
         arg = pc->args[0];
         pc += 2; /* prefetching */
         sp_index = sp - stack;
@@ -163,7 +161,7 @@ int main(const int argc, const char* const argv[]) {
         pc += 2;
         sp_index = sp - stack;
         gc_swap_root(sp_index, sp_index + arg);
-        tmp = sp[arg];
+        stack_entry tmp = sp[arg];
         sp[arg] = sp[0];
         sp[0] = tmp;
         NEXT_INSTRUCTION;
@@ -267,7 +265,7 @@ int main(const int argc, const char* const argv[]) {
         NEXT_INSTRUCTION;
     clock_label:
         ++pc;
-        now = clock();
+        clock_t now = clock();
         printf("%0.6lf\n", (double) (now - start)/CLOCKS_PER_SEC);
         NEXT_INSTRUCTION;
     cons_label:
@@ -326,6 +324,7 @@ int main(const int argc, const char* const argv[]) {
         exit(1);
 
     halt_label:
+    
     /* (print some stats)
     now = clock();
     double time = (double) (now - start)/CLOCKS_PER_SEC;

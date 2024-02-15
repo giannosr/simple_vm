@@ -1,8 +1,6 @@
 #ifndef __GC_H__
 #define __GC_H__
 
-#include "vm.h"
-
 typedef struct cons_cell {
     stack_entry head, tail;
 } cons_cell;

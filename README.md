@@ -51,11 +51,29 @@ $ ./vm hello.b
 Sticking out your gyat for the rizzler
 ```
 
-The next example is a program that asks the user for one character of input. If that character is `r` it dynamically reloads itself (and starts execution from the begining). If it's any other character it halts.
+The next example is a program that asks the user for one character of input. If that character is `r` it dynamically reloads itself (and continues the execution from the next address after the `RELOAD` instruction). If it's any other character it halts. (`r` and `e` are user inputs here)
 ```shell
-$ echo -n '\x08r\x17\x0e\x02\x08\x00\x00\x17\x40' > reload.b
+$ echo -n '\x08r\x17\x0e\x02\x08\x00\x00\x40' > reload.b
 $ ./vm reload.b
 r
+$ ./vm reload.b&
+[1] 9094
+[1]  + 9094 suspended (tty input)  ./vm reload.b
+$ echo -n '\x08\x0a\x08\x82\x08\x98\x08\x9F\x08\xF0\x18\x18\x18\x18\x18' >> reload.b
+$ fg
+[1]  + 9094 continued  ./vm reload.b
 r
+😂
+```
+```shell
+$ echo -n '\x08r\x17\x0e\x02\x08\x00\x00\x40' > reload.b
+$ ./vm reload.b
+e
+$ ./vm reload.b&
+[1] 9464
+[1]  + 9464 suspended (tty input)  ./vm reload.b
+$ echo -n '\x08\x0a\x08\x82\x08\x98\x08\x9F\x08\xF0\x18\x18\x18\x18\x18' >> reload.b
+$ fg
+[1]  + 9464 continued  ./vm reload.b
 e
 ```
